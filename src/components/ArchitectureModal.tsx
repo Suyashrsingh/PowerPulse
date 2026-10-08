@@ -121,20 +121,40 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
 {`import json
 import boto3
 
-sns = boto3.client('sns')
-SNS_TOPIC_ARN = "arn:aws:sns:ap-south-1:123456789012:SEM-Overload-Alerts"
+sns = boto3.client("sns")
+
+SNS_TOPIC_ARN = "arn:aws:sns:ap-south-1:645822828113:SmartEnergyAlerts"
 
 def lambda_handler(event, context):
-    power = event.get('power', 0)
-    device_id = event.get('device_id', 'SmartEnergyMeter01')
-    
-    if power >= 3000:
-        sns.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=f"Power Overload Alert - {power}W",
-            Message=f"Device {device_id} exceeded 3000W limit: {power}W"
+    print("Received:", json.dumps(event))
+
+    power = float(event.get("power", 0))
+    device_id = event.get("device_id", "Unknown")
+
+    if power > 3000:
+        subject = "CRITICAL: High Power Consumption"
+        message = (
+            f"Device: {device_id}\\n"
+            f"Power: {power} W\\n\\n"
+            "Critical power threshold exceeded!"
         )
-    return {"status": "OK"}`}
+    elif power > 2000:
+        subject = "WARNING: High Power Consumption"
+        message = (
+            f"Device: {device_id}\\n"
+            f"Power: {power} W\\n\\n"
+            "Warning power threshold exceeded."
+        )
+    else:
+        return {"statusCode": 200, "body": "Power is normal"}
+
+    sns.publish(
+        TopicArn=SNS_TOPIC_ARN,
+        Subject=subject,
+        Message=message
+    )
+
+    return {"statusCode": 200, "body": "Alert sent"}`}
             </pre>
           )}
 
