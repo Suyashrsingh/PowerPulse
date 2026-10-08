@@ -7,7 +7,7 @@
     - ESP32 RX2 (GPIO 16) -> PZEM-004T TX
     - ESP32 5V & GND     -> PZEM-004T VCC & GND
 
-  Required Arduino Libraries (Install via Library Manager):
+  Required Arduino Libraries:
     1. PZEM-004T v3.0 by Jakub Maćkowiak (PZEM004Tv30.h)
     2. PubSubClient by Nick O'Leary (PubSubClient.h)
     3. ArduinoJson by Benoit Blanchon (ArduinoJson.h)
@@ -25,28 +25,28 @@ const char* WIFI_SSID = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
 // 2. AWS IoT Core Configuration
-const char* AWS_IOT_ENDPOINT = "YOUR_AWS_IOT_ENDPOINT.iot.ap-south-1.amazonaws.com"; // e.g. a1b2c3d4e5f6g7-ats.iot.ap-south-1.amazonaws.com
+const char* AWS_IOT_ENDPOINT = "YOUR_AWS_IOT_ENDPOINT.iot.ap-south-1.amazonaws.com";
 const char* DEVICE_ID = "SmartEnergyMeter01";
-const char* AWS_MQTT_TOPIC = "smartenergymeter/pub";
+const char* AWS_MQTT_TOPIC = "energy/SmartEnergyMeter01/data";
 
-// 3. AWS IoT Certificates (Copy from AWS IoT Core -> Things -> Certificates)
+// 3. AWS IoT Certificates (Copy & paste certificate text inside R"EOF(...)EOF")
 
 // Amazon Root CA 1
-const char AWS_CERT_CA[] PROGMEM = R"EOF(
+const char* AWS_ROOT_CA = R"EOF(
 -----BEGIN CERTIFICATE-----
 ... PASTE YOUR AMAZON ROOT CA 1 HERE ...
 -----END CERTIFICATE-----
 )EOF";
 
 // ESP32 Device Certificate (xxxxxxxxx-certificate.pem.crt)
-const char AWS_CERT_CRT[] PROGMEM = R"EOF(
+const char* AWS_CERTIFICATE = R"EOF(
 -----BEGIN CERTIFICATE-----
 ... PASTE YOUR ESP32 DEVICE CERTIFICATE HERE ...
 -----END CERTIFICATE-----
 )EOF";
 
 // ESP32 Private Key (xxxxxxxxx-private.pem.key)
-const char AWS_CERT_PRIVATE[] PROGMEM = R"EOF(
+const char* AWS_PRIVATE_KEY = R"EOF(
 -----BEGIN RSA PRIVATE KEY-----
 ... PASTE YOUR ESP32 PRIVATE KEY HERE ...
 -----END RSA PRIVATE KEY-----
@@ -65,23 +65,18 @@ void connectToWiFi() {
   Serial.println(WIFI_SSID);
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
   Serial.println("\nWi-Fi Connected!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
 }
 
 void connectToAWS() {
-  net.setCACert(AWS_CERT_CA);
-  net.setCertificate(AWS_CERT_CRT);
-  net.setPrivateKey(AWS_CERT_PRIVATE);
-
+  net.setCACert(AWS_ROOT_CA);
+  net.setCertificate(AWS_CERTIFICATE);
+  net.setPrivateKey(AWS_PRIVATE_KEY);
   client.setServer(AWS_IOT_ENDPOINT, 8883);
-
   Serial.println("Connecting to AWS IoT Core...");
   while (!client.connected()) {
     if (client.connect(DEVICE_ID)) {
@@ -104,7 +99,6 @@ void publishTelemetry() {
   float frequency = pzem.frequency();
   float pf = pzem.pf();
 
-  // Check if readings are valid numbers
   if (isnan(voltage)) voltage = 0.0;
   if (isnan(current)) current = 0.0;
   if (isnan(power)) power = 0.0;
@@ -125,7 +119,7 @@ void publishTelemetry() {
   char jsonBuffer[512];
   serializeJson(doc, jsonBuffer);
 
-  Serial.print("Publishing to AWS IoT Topic ");
+  Serial.print("Publishing to ");
   Serial.print(AWS_MQTT_TOPIC);
   Serial.print(": ");
   Serial.println(jsonBuffer);
@@ -136,11 +130,6 @@ void publishTelemetry() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-
-  Serial.println("\n=================================");
-  Serial.println("PowerPulse ESP32 PZEM AWS IoT Initializing...");
-  Serial.println("=================================");
-
   connectToWiFi();
   connectToAWS();
 }
@@ -155,5 +144,5 @@ void loop() {
   client.loop();
 
   publishTelemetry();
-  delay(3000); // Send reading every 3 seconds
+  delay(3000);
 }
