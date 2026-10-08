@@ -106,9 +106,10 @@ void publishTelemetry() {
   if (isnan(frequency)) frequency = 50.0;
   if (isnan(pf)) pf = 0.95;
 
-  // Build JSON payload
+  // Build JSON payload (including numeric timestamp for DynamoDBv2 Sort Key)
   StaticJsonDocument<256> doc;
   doc["device_id"] = DEVICE_ID;
+  doc["timestamp"] = (unsigned long long)millis() + 1728436500000ULL;
   doc["voltage"] = voltage;
   doc["current"] = current;
   doc["power"] = power;
