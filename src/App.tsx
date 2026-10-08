@@ -10,7 +10,7 @@ import { CostCalculator } from './components/CostCalculator';
 import { DeviceStatus } from './components/DeviceStatus';
 import { ArchitectureModal } from './components/ArchitectureModal';
 import { SettingsModal } from './components/SettingsModal';
-import { Network, AlertCircle, CloudCheck, Link } from 'lucide-react';
+import { Network, Link } from 'lucide-react';
 
 import {
   EnergyReading,
@@ -22,10 +22,9 @@ import {
 } from './types/energy';
 
 import {
-  generateHistoricalData,
+  EMPTY_READING,
   generateDailyConsumption,
   INITIAL_ALERTS,
-  generateNextReading,
   formatTime,
 } from './services/mockDataService';
 
@@ -37,7 +36,7 @@ import {
 } from './services/awsService';
 
 export const App: React.FC = () => {
-  // 1. Persistent Theme State (Default: Dark Mode for ultra 3D high contrast)
+  // 1. Persistent Theme State (Default: Dark Mode)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     const savedTheme = localStorage.getItem('SEM_THEME');
     return savedTheme ? savedTheme === 'dark' : true;
@@ -55,26 +54,17 @@ export const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
-  // 2. Active Website Page View State ('dashboard' | 'analytics' | 'trends' | 'alerts' | 'device')
+  // 2. Active Website Page View State
   const [activePage, setActivePage] = useState<ActivePage>('dashboard');
 
   // 3. AWS Config State
   const [awsConfig, setAwsConfig] = useState<AwsConfig>(getStoredAwsConfig());
 
-  // 4. Core Telemetry State
+  // 4. Core Telemetry State (Starts clean with 0 values until AWS connects)
   const [activeFilter, setActiveFilter] = useState<TimeRangeFilter>('24H');
-  const [historicalData, setHistoricalData] = useState<EnergyReading[]>(() =>
-    generateHistoricalData('24H')
-  );
-  
-  const [currentReading, setCurrentReading] = useState<EnergyReading>(() => {
-    const data = generateHistoricalData('24H');
-    return data[data.length - 1];
-  });
-
-  const [dailyData, setDailyData] = useState<DailyConsumption[]>(() =>
-    generateDailyConsumption()
-  );
+  const [historicalData, setHistoricalData] = useState<EnergyReading[]>([]);
+  const [currentReading, setCurrentReading] = useState<EnergyReading>(EMPTY_READING);
+  const [dailyData, setDailyData] = useState<DailyConsumption[]>(() => generateDailyConsumption());
 
   // 5. Dashboard Settings & Rate State
   const [ratePerKwh, setRatePerKwh] = useState<number>(8.0);
@@ -110,9 +100,9 @@ export const App: React.FC = () => {
     }, 4000);
   };
 
-  // 9. Fetch Real AWS Data if API Gateway Endpoint URL is configured
+  // 9. Fetch Real AWS Data directly from API Gateway -> DynamoDB
   useEffect(() => {
-    if (!awsConfig.apiGatewayUrl || !awsConfig.useRealAws) return;
+    if (!awsConfig.apiGatewayUrl) return;
 
     const fetchRealData = async () => {
       try {
@@ -148,65 +138,15 @@ export const App: React.FC = () => {
   // Filter Change
   const handleFilterChange = async (filter: TimeRangeFilter) => {
     setActiveFilter(filter);
-    if (awsConfig.apiGatewayUrl && awsConfig.useRealAws) {
+    if (awsConfig.apiGatewayUrl) {
       try {
         const history = await fetchAwsHistoricalData(awsConfig, filter);
         setHistoricalData(history);
       } catch (e) {
         console.error('Filter fetch error:', e);
       }
-    } else {
-      setHistoricalData(generateHistoricalData(filter));
     }
   };
-
-  // 10. Simulation Loop (Active only if real AWS API URL is not set)
-  useEffect(() => {
-    if (awsConfig.apiGatewayUrl && awsConfig.useRealAws) return;
-    if (!isSimulating || !deviceState.isOnline) return;
-
-    const interval = setInterval(() => {
-      const nextReading = generateNextReading(currentReading, loadPreset);
-      setCurrentReading(nextReading);
-
-      setHistoricalData((prev) => [...prev.slice(1), nextReading]);
-
-      const now = new Date();
-      setDeviceState((prev) => ({
-        ...prev,
-        lastUpdated: formatTime(now),
-        secondsAgo: 0,
-      }));
-
-      if (nextReading.power >= 3000) {
-        const newAlert: AlertEvent = {
-          id: `alt-${Date.now()}`,
-          severity: 'critical',
-          message: `Critical: Power exceeded 3000 W (${nextReading.power} W)`,
-          timestamp: formatTime(now),
-          value: nextReading.power,
-        };
-        setAlerts((prev) => [newAlert, ...prev]);
-        showToast(`Power Overload Alert (${nextReading.power} W)`);
-      } else if (nextReading.power >= 2000 && nextReading.power < 3000) {
-        const existsWarning = alerts.some(
-          (a) => a.severity === 'warning' && a.timestamp === formatTime(now)
-        );
-        if (!existsWarning) {
-          const newAlert: AlertEvent = {
-            id: `alt-${Date.now()}`,
-            severity: 'warning',
-            message: `Warning: Power exceeded 2000 W (${nextReading.power} W)`,
-            timestamp: formatTime(now),
-            value: nextReading.power,
-          };
-          setAlerts((prev) => [newAlert, ...prev]);
-        }
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [awsConfig, isSimulating, deviceState.isOnline, currentReading, loadPreset, alerts]);
 
   // Ticker
   useEffect(() => {
@@ -280,9 +220,9 @@ export const App: React.FC = () => {
     showToast(`Exported as ${format.toUpperCase()}`);
   };
 
-  const todayKwh = 4.82 + (currentReading.energy - 1.284);
-  const weekKwh = 28.6 + (todayKwh - 4.82);
-  const monthKwh = 94.3 + (todayKwh - 4.82);
+  const todayKwh = currentReading.energy;
+  const weekKwh = todayKwh * 7;
+  const monthKwh = todayKwh * 30;
 
   const costSummary = {
     ratePerKwh,
