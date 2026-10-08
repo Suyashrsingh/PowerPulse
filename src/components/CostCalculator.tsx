@@ -12,7 +12,7 @@ export const CostCalculator: React.FC<CostCalculatorProps> = ({
   onRateChange,
 }) => {
   const ratePresets = [5.0, 7.5, 8.0, 10.0, 12.0];
-  const dailyAvgKwh = summary.todayKwh > 0 ? summary.todayKwh : 3.5;
+  const dailyAvgKwh = summary.todayKwh;
   const projectedMonthCost = (dailyAvgKwh * 30 * summary.ratePerKwh).toFixed(2);
 
   const uniformLimeLiquid = "liquid-bg-blob bg-lime-400/40 dark:bg-lime-500/35";
