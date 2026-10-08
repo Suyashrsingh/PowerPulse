@@ -11,11 +11,23 @@ export const LiveReadings: React.FC<LiveReadingsProps> = ({ reading }) => {
   const isCritical = reading.power >= 3000;
   const isWarning = reading.power >= 2000 && reading.power < 3000;
 
-  const powerPercentage = Math.min(100, Math.round((reading.power / 4000) * 100));
+  // Max load capacity: 3300W (Standard 230V / 15A circuit)
+  const MAX_LOAD_W = 3300;
+  const rawPercentage = (reading.power / MAX_LOAD_W) * 100;
+  const powerPercentage = Math.min(100, rawPercentage);
 
+  // Format percentage text cleanly: e.g. "0.1%" or "0.2%" for small loads like 3.9W/6W instead of 0%
+  const displayPercentage = reading.power === 0
+    ? '0'
+    : powerPercentage < 1
+    ? powerPercentage.toFixed(1)
+    : Math.round(powerPercentage).toString();
+
+  // Dial SVG stroke math (ensure a tiny visible stroke if load > 0)
+  const strokePercentage = reading.power > 0 && powerPercentage < 2 ? 2 : powerPercentage;
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (powerPercentage / 100) * circumference;
+  const strokeDashoffset = circumference - (strokePercentage / 100) * circumference;
 
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
@@ -201,7 +213,7 @@ export const LiveReadings: React.FC<LiveReadingsProps> = ({ reading }) => {
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="dial-inner text-center">
                   <span className="text-sm font-black font-mono text-lime-600 dark:text-lime-400">
-                    {powerPercentage}%
+                    {displayPercentage}%
                   </span>
                   <span className="text-[8px] font-black text-sub font-mono uppercase">Load</span>
                 </div>
