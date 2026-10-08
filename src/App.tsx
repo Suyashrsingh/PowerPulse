@@ -10,6 +10,7 @@ import { CostCalculator } from './components/CostCalculator';
 import { DeviceStatus } from './components/DeviceStatus';
 import { ArchitectureModal } from './components/ArchitectureModal';
 import { SettingsModal } from './components/SettingsModal';
+import { Network, AlertCircle, CloudCheck, Link } from 'lucide-react';
 
 import {
   EnergyReading,
@@ -27,6 +28,13 @@ import {
   generateNextReading,
   formatTime,
 } from './services/mockDataService';
+
+import {
+  AwsConfig,
+  getStoredAwsConfig,
+  fetchAwsLatestReading,
+  fetchAwsHistoricalData,
+} from './services/awsService';
 
 export const App: React.FC = () => {
   // 1. Persistent Theme State (Default: Dark Mode for ultra 3D high contrast)
@@ -50,7 +58,10 @@ export const App: React.FC = () => {
   // 2. Active Website Page View State ('dashboard' | 'analytics' | 'trends' | 'alerts' | 'device')
   const [activePage, setActivePage] = useState<ActivePage>('dashboard');
 
-  // 3. Core Telemetry State
+  // 3. AWS Config State
+  const [awsConfig, setAwsConfig] = useState<AwsConfig>(getStoredAwsConfig());
+
+  // 4. Core Telemetry State
   const [activeFilter, setActiveFilter] = useState<TimeRangeFilter>('24H');
   const [historicalData, setHistoricalData] = useState<EnergyReading[]>(() =>
     generateHistoricalData('24H')
@@ -65,39 +76,32 @@ export const App: React.FC = () => {
     generateDailyConsumption()
   );
 
-  // 4. Dashboard Settings & Rate State
+  // 5. Dashboard Settings & Rate State
   const [ratePerKwh, setRatePerKwh] = useState<number>(8.0);
   const [loadPreset, setLoadPreset] = useState<LoadPreset>('normal');
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
 
-  // 5. Alerts State
+  // 6. Alerts & Notification Toast State
   const [alerts, setAlerts] = useState<AlertEvent[]>(INITIAL_ALERTS);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // 6. Device State
+  // 7. Device State
   const [deviceState, setDeviceState] = useState<DeviceState>({
-    deviceId: 'SmartEnergyMeter01',
+    deviceId: awsConfig.deviceId || 'SmartEnergyMeter01',
     isOnline: true,
-    awsConnected: true,
+    awsConnected: Boolean(awsConfig.apiGatewayUrl),
     wifiConnected: true,
     wifiRssi: -58,
     lastUpdated: formatTime(new Date()),
     secondsAgo: 0,
     pzemStatus: 'OK',
-    dynamoDbStatus: 'SYNCED',
+    dynamoDbStatus: awsConfig.apiGatewayUrl ? 'SYNCED' : 'AWAITING_ENDPOINT',
     snsStatus: 'ACTIVE',
   });
 
-  // 7. Modals State
+  // 8. Modals State
   const [isArchModalOpen, setIsArchModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
-
-  // Filter Change
-  const handleFilterChange = (filter: TimeRangeFilter) => {
-    setActiveFilter(filter);
-    const newData = generateHistoricalData(filter);
-    setHistoricalData(newData);
-  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -106,8 +110,59 @@ export const App: React.FC = () => {
     }, 4000);
   };
 
-  // 8. Telemetry Loop
+  // 9. Fetch Real AWS Data if API Gateway Endpoint URL is configured
   useEffect(() => {
+    if (!awsConfig.apiGatewayUrl || !awsConfig.useRealAws) return;
+
+    const fetchRealData = async () => {
+      try {
+        const latest = await fetchAwsLatestReading(awsConfig);
+        setCurrentReading(latest);
+        const history = await fetchAwsHistoricalData(awsConfig, activeFilter);
+        if (history.length > 0) {
+          setHistoricalData(history);
+        }
+        setDeviceState((prev) => ({
+          ...prev,
+          isOnline: true,
+          awsConnected: true,
+          dynamoDbStatus: 'SYNCED',
+          lastUpdated: formatTime(new Date()),
+          secondsAgo: 0,
+        }));
+      } catch (err: any) {
+        console.error('AWS API Fetch Error:', err);
+        setDeviceState((prev) => ({
+          ...prev,
+          awsConnected: false,
+          dynamoDbStatus: 'ERROR',
+        }));
+      }
+    };
+
+    fetchRealData();
+    const interval = setInterval(fetchRealData, 3000);
+    return () => clearInterval(interval);
+  }, [awsConfig, activeFilter]);
+
+  // Filter Change
+  const handleFilterChange = async (filter: TimeRangeFilter) => {
+    setActiveFilter(filter);
+    if (awsConfig.apiGatewayUrl && awsConfig.useRealAws) {
+      try {
+        const history = await fetchAwsHistoricalData(awsConfig, filter);
+        setHistoricalData(history);
+      } catch (e) {
+        console.error('Filter fetch error:', e);
+      }
+    } else {
+      setHistoricalData(generateHistoricalData(filter));
+    }
+  };
+
+  // 10. Simulation Loop (Active only if real AWS API URL is not set)
+  useEffect(() => {
+    if (awsConfig.apiGatewayUrl && awsConfig.useRealAws) return;
     if (!isSimulating || !deviceState.isOnline) return;
 
     const interval = setInterval(() => {
@@ -151,7 +206,7 @@ export const App: React.FC = () => {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [isSimulating, deviceState.isOnline, currentReading, loadPreset, alerts]);
+  }, [awsConfig, isSimulating, deviceState.isOnline, currentReading, loadPreset, alerts]);
 
   // Ticker
   useEffect(() => {
@@ -240,12 +295,12 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="page-3d-container min-h-screen transition-colors duration-300 pb-12">
+    <div className="page-3d-container min-h-screen transition-colors duration-300 pb-12 font-sans">
       
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-3 card-3d text-blue-600 dark:text-blue-400 font-mono text-xs font-black shadow-2xl flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-3 neu-card text-lime-600 dark:text-lime-400 font-mono text-xs font-black shadow-2xl flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping"></span>
           <span>{toastMessage}</span>
         </div>
       )}
@@ -264,7 +319,28 @@ export const App: React.FC = () => {
         onOpenSettings={() => setIsSettingsModalOpen(true)}
       />
 
-      {/* 3D Navigation Bar for Website Pages (Desktop only; Mobile uses Hamburger Menu) */}
+      {/* AWS Connection Banner */}
+      {!awsConfig.apiGatewayUrl && (
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 mb-3">
+          <div className="neu-card p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono border-lime-500/40">
+            <div className="flex items-center gap-2.5">
+              <Network className="w-5 h-5 text-lime-500 flex-shrink-0 animate-pulse" />
+              <span className="text-main font-bold">
+                Connect your live AWS API Gateway REST Endpoint URL to stream real PZEM-004T telemetry directly from DynamoDB.
+              </span>
+            </div>
+            <button
+              onClick={() => setIsSettingsModalOpen(true)}
+              className="neu-btn-primary px-4 py-1.5 rounded-xl text-slate-950 font-black flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Link className="w-3.5 h-3.5" />
+              <span>Connect AWS</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3D Navigation Bar for Website Pages (Desktop view) */}
       <div className="hidden lg:block">
         <Navigation
           activePage={activePage}
@@ -354,6 +430,10 @@ export const App: React.FC = () => {
         loadPreset={loadPreset}
         onPresetChange={setLoadPreset}
         onExportData={handleExportData}
+        onAwsConfigSaved={(config) => {
+          setAwsConfig(config);
+          showToast('AWS API Gateway Connected!');
+        }}
       />
 
     </div>

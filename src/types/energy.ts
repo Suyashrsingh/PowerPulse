@@ -29,7 +29,7 @@ export interface DeviceState {
   lastUpdated: string;
   secondsAgo: number;
   pzemStatus: 'OK' | 'ERROR';
-  dynamoDbStatus: 'SYNCED' | 'DELAYED' | 'OFFLINE';
+  dynamoDbStatus: 'SYNCED' | 'DELAYED' | 'OFFLINE' | 'AWAITING_ENDPOINT' | 'ERROR';
   snsStatus: 'ACTIVE' | 'PAUSED';
 }
 

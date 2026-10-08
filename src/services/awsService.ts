@@ -14,7 +14,7 @@ const DEFAULT_AWS_CONFIG: AwsConfig = {
   apiKey: '',
   region: 'ap-south-1',
   deviceId: 'SmartEnergyMeter01',
-  useRealAws: false,
+  useRealAws: true,
 };
 
 // Local storage key for persistent configuration
@@ -42,10 +42,10 @@ export const fetchAwsHistoricalData = async (
   range: TimeRangeFilter
 ): Promise<EnergyReading[]> => {
   if (!config.apiGatewayUrl) {
-    throw new Error('AWS API Gateway URL is missing.');
+    throw new Error('AWS API Gateway Endpoint URL is missing.');
   }
 
-  const endpoint = `${config.apiGatewayUrl.replace(/\/$/, '')}/readings?deviceId=${config.deviceId}&range=${range}`;
+  const endpoint = `${config.apiGatewayUrl.replace(/\/$/, '')}/readings?deviceId=${encodeURIComponent(config.deviceId)}&range=${encodeURIComponent(range)}`;
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -65,16 +65,17 @@ export const fetchAwsHistoricalData = async (
   }
 
   const data = await response.json();
-  // Expecting data to be an array of EnergyReading or AWS DynamoDB items
-  return data.map((item: any) => ({
+  const list = Array.isArray(data) ? data : data.readings || data.items || [];
+  
+  return list.map((item: any) => ({
     timestamp: item.timestamp || new Date().toISOString(),
-    timeLabel: item.timeLabel || new Date(item.timestamp).toLocaleTimeString(),
-    voltage: +item.voltage,
-    current: +item.current,
-    power: +item.power,
-    energy: +item.energy,
-    frequency: +item.frequency,
-    powerFactor: +item.power_factor || +item.powerFactor || 0.94,
+    timeLabel: item.timeLabel || new Date(item.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    voltage: Number(item.voltage) || 0,
+    current: Number(item.current) || 0,
+    power: Number(item.power) || 0,
+    energy: Number(item.energy) || 0,
+    frequency: Number(item.frequency) || 0,
+    powerFactor: Number(item.power_factor ?? item.powerFactor ?? 0.95),
   }));
 };
 
@@ -83,10 +84,10 @@ export const fetchAwsLatestReading = async (
   config: AwsConfig
 ): Promise<EnergyReading> => {
   if (!config.apiGatewayUrl) {
-    throw new Error('AWS API Gateway URL is missing.');
+    throw new Error('AWS API Gateway Endpoint URL is missing.');
   }
 
-  const endpoint = `${config.apiGatewayUrl.replace(/\/$/, '')}/latest?deviceId=${config.deviceId}`;
+  const endpoint = `${config.apiGatewayUrl.replace(/\/$/, '')}/latest?deviceId=${encodeURIComponent(config.deviceId)}`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -102,18 +103,20 @@ export const fetchAwsLatestReading = async (
   });
 
   if (!response.ok) {
-    throw new Error(`AWS API Gateway HTTP ${response.status}`);
+    throw new Error(`AWS API Gateway returned HTTP ${response.status}`);
   }
 
   const item = await response.json();
+  const reading = item.item || item.data || item;
+  
   return {
-    timestamp: item.timestamp || new Date().toISOString(),
-    timeLabel: new Date(item.timestamp || Date.now()).toLocaleTimeString(),
-    voltage: +item.voltage,
-    current: +item.current,
-    power: +item.power,
-    energy: +item.energy,
-    frequency: +item.frequency,
-    powerFactor: +item.power_factor || +item.powerFactor || 0.94,
+    timestamp: reading.timestamp || new Date().toISOString(),
+    timeLabel: new Date(reading.timestamp || Date.now()).toLocaleTimeString(),
+    voltage: Number(reading.voltage) || 0,
+    current: Number(reading.current) || 0,
+    power: Number(reading.power) || 0,
+    energy: Number(reading.energy) || 0,
+    frequency: Number(reading.frequency) || 0,
+    powerFactor: Number(reading.power_factor ?? reading.powerFactor ?? 0.95),
   };
 };
