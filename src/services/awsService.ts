@@ -66,18 +66,22 @@ export const fetchAwsHistoricalData = async (
   }
 
   const data = await response.json();
-  const list = Array.isArray(data) ? data : data.readings || data.items || [];
+  const list = Array.isArray(data) ? data : data.readings || data.items || data.value || [];
   
-  return list.map((item: any) => ({
-    timestamp: item.timestamp || new Date().toISOString(),
-    timeLabel: item.timeLabel || new Date(item.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    voltage: Number(item.voltage) || 0,
-    current: Number(item.current) || 0,
-    power: Number(item.power) || 0,
-    energy: Number(item.energy) || 0,
-    frequency: Number(item.frequency) || 0,
-    powerFactor: Number(item.power_factor ?? item.powerFactor ?? 0.95),
-  }));
+  return list.map((item: any) => {
+    const tsNum = Number(item.timestamp);
+    const tsDate = !isNaN(tsNum) && tsNum > 0 ? new Date(tsNum) : new Date(item.timestamp || Date.now());
+    return {
+      timestamp: !isNaN(tsNum) && tsNum > 0 ? tsDate.toISOString() : (item.timestamp || new Date().toISOString()),
+      timeLabel: item.timeLabel || tsDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      voltage: Number(item.voltage) || 0,
+      current: Number(item.current) || 0,
+      power: Number(item.power) || 0,
+      energy: Number(item.energy) || 0,
+      frequency: Number(item.frequency) || 0,
+      powerFactor: Number(item.power_factor ?? item.powerFactor ?? 0.95),
+    };
+  });
 };
 
 // Fetch latest single telemetry reading from AWS DynamoDB
@@ -110,9 +114,12 @@ export const fetchAwsLatestReading = async (
   const item = await response.json();
   const reading = item.item || item.data || item;
   
+  const tsNum = Number(reading.timestamp);
+  const tsDate = !isNaN(tsNum) && tsNum > 0 ? new Date(tsNum) : new Date(reading.timestamp || Date.now());
+
   return {
-    timestamp: reading.timestamp || new Date().toISOString(),
-    timeLabel: new Date(reading.timestamp || Date.now()).toLocaleTimeString(),
+    timestamp: !isNaN(tsNum) && tsNum > 0 ? tsDate.toISOString() : (reading.timestamp || new Date().toISOString()),
+    timeLabel: tsDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     voltage: Number(reading.voltage) || 0,
     current: Number(reading.current) || 0,
     power: Number(reading.power) || 0,
