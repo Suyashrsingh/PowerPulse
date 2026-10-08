@@ -112,7 +112,7 @@ export const LiveReadings: React.FC<LiveReadingsProps> = ({ reading }) => {
             </div>
           </div>
           <div className="text-right font-mono text-xs font-bold text-sub z-10">
-            <span>{(reading.current * 230).toFixed(0)} VA</span>
+            <span>{(reading.current * (reading.voltage > 0 ? reading.voltage : 230)).toFixed(0)} VA</span>
           </div>
         </motion.div>
 
