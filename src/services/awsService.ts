@@ -2,7 +2,7 @@ import { EnergyReading, TimeRangeFilter } from '../types/energy';
 
 // Configuration interface for AWS connection
 export interface AwsConfig {
-  apiGatewayUrl: string; // e.g. "https://xyz123.execute-api.ap-south-1.amazonaws.com/prod"
+  apiGatewayUrl: string; // e.g. "https://e92lgpx45c.execute-api.ap-south-1.amazonaws.com/prod"
   apiKey?: string;
   region: string; // e.g. "ap-south-1"
   deviceId: string; // e.g. "SmartEnergyMeter01"
@@ -10,7 +10,7 @@ export interface AwsConfig {
 }
 
 const DEFAULT_AWS_CONFIG: AwsConfig = {
-  apiGatewayUrl: '',
+  apiGatewayUrl: 'https://e92lgpx45c.execute-api.ap-south-1.amazonaws.com/prod',
   apiKey: '',
   region: 'ap-south-1',
   deviceId: 'SmartEnergyMeter01',
@@ -24,7 +24,8 @@ export const getStoredAwsConfig = (): AwsConfig => {
   const stored = localStorage.getItem(CONFIG_STORAGE_KEY);
   if (stored) {
     try {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      if (parsed && parsed.apiGatewayUrl) return parsed;
     } catch (e) {
       console.error('Failed to parse stored AWS config', e);
     }
